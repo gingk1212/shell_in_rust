@@ -38,13 +38,13 @@ mod test {
     use super::*;
 
     #[test]
-    fn command_ls() {
-        assert!(invoke_cmd("ls").is_ok());
+    fn command() {
+        assert!(invoke_cmd("true").is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
-        assert!(invoke_cmd("ls -l -a").is_ok());
+        assert!(invoke_cmd("true -l -a --test").is_ok());
     }
 
     #[test]
