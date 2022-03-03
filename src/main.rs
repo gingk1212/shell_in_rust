@@ -8,9 +8,11 @@ fn main() {
         io::stdout().flush().unwrap();
 
         let mut command = String::new();
-        io::stdin()
-            .read_line(&mut command)
-            .expect("Failed to read line");
+        match io::stdin().read_line(&mut command) {
+            Ok(0) => break, // EOF
+            Ok(size) => size,
+            Err(error) => panic!("Failed to read line: {:?}", error),
+        };
         invoke_cmd(&command);
     }
 }
