@@ -24,6 +24,6 @@ fn invoke_cmd(cmd: &str) {
     };
     Command::new(first_cmd)
         .args(cmd)
-        .spawn()
+        .status()
         .expect("Command not found");
 }
