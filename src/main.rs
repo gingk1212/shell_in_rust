@@ -2,7 +2,6 @@ use std::io::{self, Write};
 use std::process::Command;
 
 fn main() {
-
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
