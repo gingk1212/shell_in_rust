@@ -14,7 +14,13 @@ fn main() {
 }
 
 fn invoke_cmd(cmd: &str) {
-    Command::new(cmd)
+    let mut cmd = cmd.split_whitespace();
+    let first_cmd = match cmd.next() {
+        Some(i) => i,
+        None => return,
+    };
+    Command::new(first_cmd)
+        .args(cmd)
         .spawn()
         .expect("Command not found");
 }
