@@ -32,3 +32,23 @@ fn invoke_cmd(cmd: &str) -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn command_ls() {
+        assert!(invoke_cmd("ls").is_ok());
+    }
+
+    #[test]
+    fn command_with_arguments() {
+        assert!(invoke_cmd("ls -l -a").is_ok());
+    }
+
+    #[test]
+    fn command_not_found() {
+        assert!(invoke_cmd("NOTFOUND").is_err());
+    }
+}
