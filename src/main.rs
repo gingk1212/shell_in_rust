@@ -14,9 +14,7 @@ fn main() {
 }
 
 fn invoke_cmd(cmd: &str) {
-    let output = Command::new(cmd)
-        .output()
+    Command::new(cmd)
+        .spawn()
         .expect("Command not found");
-    io::stdout().write_all(&output.stdout).unwrap();
-    io::stdout().write_all(&output.stderr).unwrap();
 }
