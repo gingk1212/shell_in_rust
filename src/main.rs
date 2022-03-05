@@ -22,7 +22,7 @@ fn main() {
 fn invoke_cmd(cmd: &str) -> Result<(), Box<dyn Error>> {
     let mut cmd = cmd.trim().split_whitespace();
     let first_cmd = match cmd.next() {
-        Some(i) => i,
+        Some(s) => s,
         None => return Ok(()),
     };
 
