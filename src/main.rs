@@ -10,7 +10,7 @@ fn main() {
         let mut command = String::new();
         match io::stdin().read_line(&mut command) {
             Ok(0) => break, // EOF
-            Ok(size) => size,
+            Ok(_) => (),
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
         if let Err(_) = invoke_cmd(&command) {
