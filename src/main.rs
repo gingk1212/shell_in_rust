@@ -26,9 +26,11 @@ fn invoke_cmd(cmd: &str) -> Result<(), Box<dyn Error>> {
         None => return Ok(()),
     };
 
-    Command::new(first_cmd)
+    let mut child = Command::new(first_cmd)
         .args(cmd)
-        .status()?;
+        .spawn()?;
+
+    child.wait()?;
 
     Ok(())
 }
