@@ -7,27 +7,27 @@ fn main() {
         print!("$ ");
         io::stdout().flush().unwrap();
 
-        let mut command = String::new();
-        match io::stdin().read_line(&mut command) {
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
             Ok(0) => break, // EOF
             Ok(_) => (),
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
-        if let Err(_) = invoke_cmd(&command) {
-            eprintln!("Command not found: {}", command.trim());
+        if let Err(_) = invoke_cmd(&input) {
+            eprintln!("Command not found: {}", input.trim());
         }
     }
 }
 
-fn invoke_cmd(cmd: &str) -> Result<(), Box<dyn Error>> {
-    let mut cmd = cmd.trim().split_whitespace();
-    let first_cmd = match cmd.next() {
+fn invoke_cmd(input: &str) -> Result<(), Box<dyn Error>> {
+    let mut input = input.trim().split_whitespace();
+    let first_cmd = match input.next() {
         Some(s) => s,
         None => return Ok(()),
     };
 
     let mut child = Command::new(first_cmd)
-        .args(cmd)
+        .args(input)
         .spawn()?;
 
     child.wait()?;
