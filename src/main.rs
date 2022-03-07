@@ -2,6 +2,35 @@ use std::io::{self, Write};
 use std::process::Command;
 use std::error::Error;
 
+#[derive(Debug)]
+struct Cmd {
+    command: String,
+    args: Vec<String>,
+}
+
+impl Cmd {
+    fn new() -> Cmd {
+        Cmd {
+            command: String::new(),
+            args: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum List {
+    Cons(Cmd, Box<List>),
+    Nil,
+}
+
+use List::{Cons, Nil};
+
+impl List {
+    fn new() -> List {
+        Nil
+    }
+}
+
 fn main() {
     loop {
         print!("$ ");
@@ -13,21 +42,43 @@ fn main() {
             Ok(_) => (),
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
-        if let Err(_) = invoke_cmd(&input) {
+
+        let list = List::new();
+        let list = tokenize(list, &input).expect("Failed to tokenize");
+
+        if let Err(_) = invoke_cmd(list) {
             eprintln!("Command not found: {}", input.trim());
         }
     }
 }
 
-fn invoke_cmd(input: &str) -> Result<(), Box<dyn Error>> {
+fn tokenize(list: List, input: &str) -> Result<List, Box<dyn Error>> {
     let mut input = input.trim().split_whitespace();
-    let first_cmd = match input.next() {
-        Some(s) => s,
-        None => return Ok(()),
+    let mut cmd = Cmd::new();
+
+    if let Some(s) = input.next() {
+        cmd.command = String::from(s);
+    }
+
+    for arg in input {
+        cmd.args.push(String::from(arg));
+    }
+
+    let list = Cons(cmd, Box::new(list));
+
+    Ok(list)
+}
+
+fn invoke_cmd(list: List) -> Result<(), Box<dyn Error>> {
+    let cmd;
+
+    match list {
+        Cons(c, _) => cmd = c,
+        Nil => return Ok(()),
     };
 
-    let mut child = Command::new(first_cmd)
-        .args(input)
+    let mut child = Command::new(cmd.command)
+        .args(cmd.args)
         .spawn()?;
 
     child.wait()?;
@@ -41,16 +92,22 @@ mod test {
 
     #[test]
     fn command() {
-        assert!(invoke_cmd("true").is_ok());
+        let list = List::new();
+        let list = tokenize(list, "true").unwrap();
+        assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
-        assert!(invoke_cmd("true -l -a --test").is_ok());
+        let list = List::new();
+        let list = tokenize(list, "true -l -a --test").unwrap();
+        assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_not_found() {
-        assert!(invoke_cmd("NOTFOUND").is_err());
+        let list = List::new();
+        let list = tokenize(list, "NOTFOUND").unwrap();
+        assert!(invoke_cmd(list).is_err());
     }
 }
