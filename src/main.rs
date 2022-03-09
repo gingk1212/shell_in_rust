@@ -94,28 +94,28 @@ mod test {
     #[test]
     fn command() {
         let list = List::new();
-        let list = tokenize(list, "true").unwrap();
+        let list = tokenize(list, "true\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
         let list = List::new();
-        let list = tokenize(list, "true -l -a --test").unwrap();
+        let list = tokenize(list, "true -l -a --test\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_not_found() {
         let list = List::new();
-        let list = tokenize(list, "NOTFOUND").unwrap();
+        let list = tokenize(list, "NOTFOUND\n").unwrap();
         assert!(invoke_cmd(list).is_err());
     }
 
     #[test]
     fn command_empty() {
         let list = List::new();
-        let list = tokenize(list, "").unwrap();
+        let list = tokenize(list, "\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 }
