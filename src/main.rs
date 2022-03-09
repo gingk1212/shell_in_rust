@@ -43,7 +43,7 @@ fn main() {
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
 
-        let list = tokenize(&input).expect("Failed to tokenize");
+        let list = parse(&input).expect("Failed to parse");
 
         if let Err(_) = invoke_cmd(list) {
             eprintln!("Command not found: {}", input.trim());
@@ -51,7 +51,7 @@ fn main() {
     }
 }
 
-fn tokenize(input: &str) -> Result<List, Box<dyn Error>> {
+fn parse(input: &str) -> Result<List, Box<dyn Error>> {
     let list = List::new();
     let mut input = input.trim().split_whitespace();
     let mut cmd = Cmd::new();
@@ -93,25 +93,25 @@ mod test {
 
     #[test]
     fn command() {
-        let list = tokenize("true\n").unwrap();
+        let list = parse("true\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
-        let list = tokenize("true -l -a --test\n").unwrap();
+        let list = parse("true -l -a --test\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_not_found() {
-        let list = tokenize("NOTFOUND\n").unwrap();
+        let list = parse("NOTFOUND\n").unwrap();
         assert!(invoke_cmd(list).is_err());
     }
 
     #[test]
     fn command_empty() {
-        let list = tokenize("\n").unwrap();
+        let list = parse("\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 }
