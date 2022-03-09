@@ -43,7 +43,13 @@ fn main() {
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
 
-        let list = parse(&input).expect("Failed to parse");
+        let list = match parse(&input) {
+            Ok(l) => l,
+            Err(s) => {
+                eprintln!("{}", s);
+                continue;
+            },
+        };
 
         if let Err(_) = invoke_cmd(list) {
             eprintln!("Command not found: {}", input.trim());
@@ -51,21 +57,32 @@ fn main() {
     }
 }
 
-fn parse(input: &str) -> Result<List, Box<dyn Error>> {
-    let list = List::new();
-    let mut input = input.trim().split_whitespace();
-    let mut cmd = Cmd::new();
+fn parse(input: &str) -> Result<List, &str> {
+    let mut list = List::new();
+    let cmd_line: Vec<&str> = input.trim().split("|").collect();
+    let cmd_num = cmd_line.len();
 
-    match input.next() {
-        Some(s) => cmd.command = String::from(s),
-        None => return Ok(list),
+    for l in cmd_line {
+        let mut l = l.trim().split_whitespace();
+        let mut cmd = Cmd::new();
+
+        match l.next() {
+            Some(s) => cmd.command = String::from(s),
+            None => {   // empty or whitespace command
+                if cmd_num > 1 {
+                    return Err("Syntax error near unexpected '|'");
+                } else {
+                    break;
+                }
+            },
+        }
+
+        for arg in l {
+            cmd.args.push(String::from(arg));
+        }
+
+        list = Cons(cmd, Box::new(list));
     }
-
-    for arg in input {
-        cmd.args.push(String::from(arg));
-    }
-
-    let list = Cons(cmd, Box::new(list));
 
     Ok(list)
 }
@@ -113,5 +130,50 @@ mod test {
     fn command_empty() {
         let list = parse("\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
+    }
+
+    #[test]
+    fn command_pipe_two_commands() {
+        let list = parse("ls | true\n").unwrap();
+        assert!(invoke_cmd(list).is_ok());
+    }
+
+    #[test]
+    fn command_pipe_three_commands() {
+        let list = parse("ls | ls | true\n").unwrap();
+        assert!(invoke_cmd(list).is_ok());
+    }
+
+    #[test]
+    fn command_pipe_nospace() {
+        let list = parse("ls|true\n").unwrap();
+        assert!(invoke_cmd(list).is_ok());
+    }
+
+    #[test]
+    fn command_pipe_first_command_not_found() {
+        let list = parse("NOTFOUND | ls\n").unwrap();
+        assert!(invoke_cmd(list).is_err());
+    }
+
+    #[test]
+    fn command_pipe_second_command_not_found() {
+        let list = parse("ls | NOTFOUND\n").unwrap();
+        assert!(invoke_cmd(list).is_err());
+    }
+
+    #[test]
+    fn command_pipe_first_command_does_not_exist() {
+        assert!(parse("| ls\n").is_err());
+    }
+
+    #[test]
+    fn command_pipe_second_command_does_not_exist() {
+        assert!(parse("ls | \n").is_err());
+    }
+
+    #[test]
+    fn command_pipe_only() {
+        assert!(parse("|\n").is_err());
     }
 }
