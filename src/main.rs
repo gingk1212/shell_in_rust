@@ -43,8 +43,7 @@ fn main() {
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
 
-        let list = List::new();
-        let list = tokenize(list, &input).expect("Failed to tokenize");
+        let list = tokenize(&input).expect("Failed to tokenize");
 
         if let Err(_) = invoke_cmd(list) {
             eprintln!("Command not found: {}", input.trim());
@@ -52,7 +51,8 @@ fn main() {
     }
 }
 
-fn tokenize(list: List, input: &str) -> Result<List, Box<dyn Error>> {
+fn tokenize(input: &str) -> Result<List, Box<dyn Error>> {
+    let list = List::new();
     let mut input = input.trim().split_whitespace();
     let mut cmd = Cmd::new();
 
@@ -93,29 +93,25 @@ mod test {
 
     #[test]
     fn command() {
-        let list = List::new();
-        let list = tokenize(list, "true\n").unwrap();
+        let list = tokenize("true\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
-        let list = List::new();
-        let list = tokenize(list, "true -l -a --test\n").unwrap();
+        let list = tokenize("true -l -a --test\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 
     #[test]
     fn command_not_found() {
-        let list = List::new();
-        let list = tokenize(list, "NOTFOUND\n").unwrap();
+        let list = tokenize("NOTFOUND\n").unwrap();
         assert!(invoke_cmd(list).is_err());
     }
 
     #[test]
     fn command_empty() {
-        let list = List::new();
-        let list = tokenize(list, "\n").unwrap();
+        let list = tokenize("\n").unwrap();
         assert!(invoke_cmd(list).is_ok());
     }
 }
