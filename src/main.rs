@@ -56,8 +56,9 @@ fn tokenize(list: List, input: &str) -> Result<List, Box<dyn Error>> {
     let mut input = input.trim().split_whitespace();
     let mut cmd = Cmd::new();
 
-    if let Some(s) = input.next() {
-        cmd.command = String::from(s);
+    match input.next() {
+        Some(s) => cmd.command = String::from(s),
+        None => return Ok(list),
     }
 
     for arg in input {
@@ -109,5 +110,12 @@ mod test {
         let list = List::new();
         let list = tokenize(list, "NOTFOUND").unwrap();
         assert!(invoke_cmd(list).is_err());
+    }
+
+    #[test]
+    fn command_empty() {
+        let list = List::new();
+        let list = tokenize(list, "").unwrap();
+        assert!(invoke_cmd(list).is_ok());
     }
 }
