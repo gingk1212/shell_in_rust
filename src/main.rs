@@ -1,5 +1,5 @@
-use std::io::{self, Write};
-use std::process::Command;
+use std::io::{self, Write, Read};
+use std::process::{Command, Stdio};
 use std::error::Error;
 
 #[derive(Debug)]
@@ -51,8 +51,9 @@ fn main() {
             },
         };
 
-        if let Err(_) = invoke_cmd(list) {
-            eprintln!("Command not found: {}", input.trim());
+        match invoke_cmd(list) {
+            Ok(s) => print!("{}", s),
+            Err(_) => eprintln!("Command failed: {}", input.trim()),
         }
     }
 }
@@ -87,21 +88,30 @@ fn parse(input: &str) -> Result<List, &str> {
     Ok(list)
 }
 
-fn invoke_cmd(list: List) -> Result<(), Box<dyn Error>> {
+fn invoke_cmd(list: List) -> Result<String, Box<dyn Error>> {
     let cmd;
+    let prev_stdout;
 
     match list {
-        Cons(c, _) => cmd = c,
-        Nil => return Ok(()),
+        Cons(c, l) => {
+            prev_stdout = invoke_cmd(*l)?;
+            cmd = c;
+        },
+        Nil => return Ok(String::from("")),
     };
 
-    let mut child = Command::new(cmd.command)
+    let child = Command::new(cmd.command)
         .args(cmd.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
         .spawn()?;
 
-    child.wait()?;
+    child.stdin.unwrap().write_all(prev_stdout.as_bytes())?;
 
-    Ok(())
+    let mut s = String::new();
+    child.stdout.unwrap().read_to_string(&mut s)?;
+
+    Ok(s)
 }
 
 #[cfg(test)]
