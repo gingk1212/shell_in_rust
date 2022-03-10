@@ -2,7 +2,7 @@ use std::io::{self, Write, Read};
 use std::process::{Command, Stdio};
 use std::error::Error;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Cmd {
     command: String,
     args: Vec<String>,
@@ -17,7 +17,7 @@ impl Cmd {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum List {
     Cons(Cmd, Box<List>),
     Nil,
@@ -51,9 +51,8 @@ fn main() {
             },
         };
 
-        match invoke_cmd(list) {
-            Ok(s) => print!("{}", s),
-            Err(_) => eprintln!("Command failed: {}", input.trim()),
+        if let Err(_) = invoke_cmd(list, true) {
+            eprintln!("Command failed: {}", input.trim());
         }
     }
 }
@@ -88,28 +87,54 @@ fn parse(input: &str) -> Result<List, &str> {
     Ok(list)
 }
 
-fn invoke_cmd(list: List) -> Result<String, Box<dyn Error>> {
+fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> {
     let cmd;
     let prev_stdout;
+    let mut is_first = false;
+    let is_last = from_outside;
+    let stdin_cfg;
+    let stdout_cfg;
 
     match list {
         Cons(c, l) => {
-            prev_stdout = invoke_cmd(*l)?;
+            if *l == Nil {
+                is_first = true;
+            }
+            prev_stdout = invoke_cmd(*l, false)?;
             cmd = c;
         },
-        Nil => return Ok(String::from("")),
+        Nil => return Ok(String::new()),
     };
 
-    let child = Command::new(cmd.command)
+    if is_first {
+        stdin_cfg = Stdio::inherit();
+    } else {
+        stdin_cfg = Stdio::piped();
+    }
+
+    if is_last {
+        stdout_cfg = Stdio::inherit();
+    } else {
+        stdout_cfg = Stdio::piped();
+    }
+
+    let mut child = Command::new(cmd.command)
         .args(cmd.args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
+        .stdin(stdin_cfg)
+        .stdout(stdout_cfg)
         .spawn()?;
 
-    child.stdin.unwrap().write_all(prev_stdout.as_bytes())?;
+    if !is_first {
+        child.stdin.as_ref().unwrap().write_all(prev_stdout.as_bytes())?;
+    }
 
     let mut s = String::new();
-    child.stdout.unwrap().read_to_string(&mut s)?;
+
+    if !is_last {
+        child.stdout.unwrap().read_to_string(&mut s)?;
+    } else {
+        child.wait()?;
+    }
 
     Ok(s)
 }
@@ -121,55 +146,55 @@ mod test {
     #[test]
     fn command() {
         let list = parse("true\n").unwrap();
-        assert!(invoke_cmd(list).is_ok());
+        assert!(invoke_cmd(list, true).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
         let list = parse("true -l -a --test\n").unwrap();
-        assert!(invoke_cmd(list).is_ok());
+        assert!(invoke_cmd(list, true).is_ok());
     }
 
     #[test]
     fn command_not_found() {
         let list = parse("NOTFOUND\n").unwrap();
-        assert!(invoke_cmd(list).is_err());
+        assert!(invoke_cmd(list, true).is_err());
     }
 
     #[test]
     fn command_empty() {
         let list = parse("\n").unwrap();
-        assert!(invoke_cmd(list).is_ok());
+        assert!(invoke_cmd(list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_two_commands() {
         let list = parse("ls | true\n").unwrap();
-        assert!(invoke_cmd(list).is_ok());
+        assert!(invoke_cmd(list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_three_commands() {
         let list = parse("ls | ls | true\n").unwrap();
-        assert!(invoke_cmd(list).is_ok());
+        assert!(invoke_cmd(list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_nospace() {
         let list = parse("ls|true\n").unwrap();
-        assert!(invoke_cmd(list).is_ok());
+        assert!(invoke_cmd(list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_first_command_not_found() {
         let list = parse("NOTFOUND | ls\n").unwrap();
-        assert!(invoke_cmd(list).is_err());
+        assert!(invoke_cmd(list, true).is_err());
     }
 
     #[test]
     fn command_pipe_second_command_not_found() {
         let list = parse("ls | NOTFOUND\n").unwrap();
-        assert!(invoke_cmd(list).is_err());
+        assert!(invoke_cmd(list, true).is_err());
     }
 
     #[test]
@@ -185,5 +210,10 @@ mod test {
     #[test]
     fn command_pipe_only() {
         assert!(parse("|\n").is_err());
+    }
+
+    #[test]
+    fn command_cat() {
+        // TODO
     }
 }
