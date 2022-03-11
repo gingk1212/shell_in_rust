@@ -128,7 +128,7 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> 
         .spawn()?;
 
     if !is_first {
-        if let Err(_) = child.try_wait() {
+        if let Ok(None) = child.try_wait() {
             child.stdin.as_ref().unwrap().write_all(prev_stdout.as_bytes())?;
         }
     }
