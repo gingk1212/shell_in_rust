@@ -51,8 +51,11 @@ fn main() {
             },
         };
 
-        if let Err(_) = invoke_cmd(list, true) {
+        if let Err(e) = invoke_cmd(list, true) {
             eprintln!("Command failed: {}", input.trim());
+            if cfg!(debug_assertions) {
+                eprintln!("{}", e);
+            }
         }
     }
 }
