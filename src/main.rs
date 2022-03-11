@@ -125,7 +125,9 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> 
         .spawn()?;
 
     if !is_first {
-        child.stdin.as_ref().unwrap().write_all(prev_stdout.as_bytes())?;
+        if let Err(_) = child.try_wait() {
+            child.stdin.as_ref().unwrap().write_all(prev_stdout.as_bytes())?;
+        }
     }
 
     let mut s = String::new();
@@ -215,5 +217,11 @@ mod test {
     #[test]
     fn command_cat() {
         // TODO
+    }
+
+    #[test]
+    fn command_second_command_does_not_take_stdin() {
+        let list = parse("ss | true\n").unwrap();
+        assert!(invoke_cmd(list, true).is_ok());
     }
 }
