@@ -134,10 +134,10 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> 
     let mut s = String::new();
 
     if !is_last {
-        child.stdout.unwrap().read_to_string(&mut s)?;
-    } else {
-        child.wait()?;
+        child.stdout.take().unwrap().read_to_string(&mut s)?;
     }
+
+    child.wait()?;
 
     Ok(s)
 }
