@@ -1,6 +1,7 @@
-use std::io::{self, Write, Read};
-use std::process::{Command, Stdio};
+use std::io::{self, Write};
+use std::process::{Command, Stdio, Child};
 use std::error::Error;
+use std::os::unix::io::{IntoRawFd, FromRawFd};
 
 #[derive(Debug, PartialEq)]
 struct Cmd {
@@ -90,9 +91,9 @@ fn parse(input: &str) -> Result<List, &str> {
     Ok(list)
 }
 
-fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> {
+fn invoke_cmd(list: List, from_outside: bool) -> Result<Option<Child>, Box<dyn Error>> {
     let cmd;
-    let prev_stdout;
+    let mut prev_child = None;
     let mut is_first = false;
     let is_last = from_outside;
     let stdin_cfg;
@@ -100,19 +101,21 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> 
 
     match list {
         Cons(c, l) => {
-            if *l == Nil {
-                is_first = true;
+            match invoke_cmd(*l, false) {
+                Ok(Some(child)) => prev_child = Some(child),
+                Ok(None) => is_first = true,
+                Err(e) => return Err(e),
             }
-            prev_stdout = invoke_cmd(*l, false)?;
             cmd = c;
         },
-        Nil => return Ok(String::new()),
+        Nil => return Ok(None),
     };
 
     if is_first {
         stdin_cfg = Stdio::inherit();
     } else {
-        stdin_cfg = Stdio::piped();
+        let prev_stdout = prev_child.unwrap().stdout.take().unwrap();
+        stdin_cfg = unsafe { Stdio::from_raw_fd(prev_stdout.into_raw_fd()) };
     }
 
     if is_last {
@@ -127,19 +130,11 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<String, Box<dyn Error>> 
         .stdout(stdout_cfg)
         .spawn()?;
 
-    if !is_first {
-        let _ = child.stdin.take().unwrap().write_all(prev_stdout.as_bytes());
+    if is_last {
+        child.wait()?;
     }
 
-    let mut s = String::new();
-
-    if !is_last {
-        child.stdout.take().unwrap().read_to_string(&mut s)?;
-    }
-
-    child.wait()?;
-
-    Ok(s)
+    Ok(Some(child))
 }
 
 #[cfg(test)]
@@ -229,6 +224,12 @@ mod test {
     #[test]
     fn command_command_on_the_way_take_stdin() {
         let list = parse("ls | wc -l | true\n").unwrap();
+        assert!(invoke_cmd(list, true).is_ok());
+    }
+
+    #[test]
+    fn command_ss_ss() {
+        let list = parse("ss | ss | true\n").unwrap();
         assert!(invoke_cmd(list, true).is_ok());
     }
 }
