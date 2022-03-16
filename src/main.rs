@@ -44,7 +44,7 @@ fn main() {
             Err(error) => panic!("Failed to read line: {:?}", error),
         };
 
-        let list = match parse(&input) {
+        let mut list = match parse(&input) {
             Ok(l) => l,
             Err(s) => {
                 eprintln!("{}", s);
@@ -52,7 +52,7 @@ fn main() {
             },
         };
 
-        if let Err(e) = invoke_cmd(list, true) {
+        if let Err(e) = invoke_cmd(&mut list, true) {
             eprintln!("Command failed: {}", input.trim());
             if cfg!(debug_assertions) {
                 eprintln!("{}", e);
@@ -91,7 +91,7 @@ fn parse(input: &str) -> Result<List, &str> {
     Ok(list)
 }
 
-fn invoke_cmd(list: List, from_outside: bool) -> Result<Option<Child>, Box<dyn Error>> {
+fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<Child>, Box<dyn Error>> {
     let cmd;
     let mut prev_child = None;
     let mut is_first = false;
@@ -101,7 +101,7 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<Option<Child>, Box<dyn E
 
     match list {
         Cons(c, l) => {
-            match invoke_cmd(*l, false) {
+            match invoke_cmd(l, false) {
                 Ok(Some(child)) => prev_child = Some(child),
                 Ok(None) => is_first = true,
                 Err(e) => return Err(e),
@@ -124,8 +124,8 @@ fn invoke_cmd(list: List, from_outside: bool) -> Result<Option<Child>, Box<dyn E
         stdout_cfg = Stdio::piped();
     }
 
-    let mut child = Command::new(cmd.command)
-        .args(cmd.args)
+    let mut child = Command::new(&cmd.command)
+        .args(&cmd.args)
         .stdin(stdin_cfg)
         .stdout(stdout_cfg)
         .spawn()?;
@@ -143,56 +143,56 @@ mod test {
 
     #[test]
     fn command() {
-        let list = parse("true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
-        let list = parse("true -l -a --test\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("true -l -a --test\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_not_found() {
-        let list = parse("NOTFOUND\n").unwrap();
-        assert!(invoke_cmd(list, true).is_err());
+        let mut list = parse("NOTFOUND\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_err());
     }
 
     #[test]
     fn command_empty() {
-        let list = parse("\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_two_commands() {
-        let list = parse("ls | true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("ls | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_three_commands() {
-        let list = parse("ls | ls | true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("ls | ls | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_nospace() {
-        let list = parse("ls|true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("ls|true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_pipe_first_command_not_found() {
-        let list = parse("NOTFOUND | ls\n").unwrap();
-        assert!(invoke_cmd(list, true).is_err());
+        let mut list = parse("NOTFOUND | ls\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_err());
     }
 
     #[test]
     fn command_pipe_second_command_not_found() {
-        let list = parse("ls | NOTFOUND\n").unwrap();
-        assert!(invoke_cmd(list, true).is_err());
+        let mut list = parse("ls | NOTFOUND\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_err());
     }
 
     #[test]
@@ -217,19 +217,19 @@ mod test {
 
     #[test]
     fn command_second_command_does_not_take_stdin() {
-        let list = parse("ss | true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("ss | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_command_on_the_way_take_stdin() {
-        let list = parse("ls | wc -l | true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("ls | wc -l | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 
     #[test]
     fn command_ss_ss() {
-        let list = parse("ss | ss | true\n").unwrap();
-        assert!(invoke_cmd(list, true).is_ok());
+        let mut list = parse("ss | ss | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
     }
 }
