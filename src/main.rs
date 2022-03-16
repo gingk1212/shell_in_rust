@@ -3,10 +3,11 @@ use std::process::{Command, Stdio, Child};
 use std::error::Error;
 use std::os::unix::io::{IntoRawFd, FromRawFd};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 struct Cmd {
     command: String,
     args: Vec<String>,
+    child: Option<Child>,
 }
 
 impl Cmd {
@@ -14,11 +15,12 @@ impl Cmd {
         Cmd {
             command: String::new(),
             args: Vec::new(),
+            child: None,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 enum List {
     Cons(Cmd, Box<List>),
     Nil,
@@ -91,7 +93,7 @@ fn parse(input: &str) -> Result<List, &str> {
     Ok(list)
 }
 
-fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<Child>, Box<dyn Error>> {
+fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Child>, Box<dyn Error>> {
     let cmd;
     let mut prev_child = None;
     let mut is_first = false;
@@ -124,17 +126,21 @@ fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<Child>, Box<
         stdout_cfg = Stdio::piped();
     }
 
-    let mut child = Command::new(&cmd.command)
+    cmd.child = match Command::new(&cmd.command)
         .args(&cmd.args)
         .stdin(stdin_cfg)
         .stdout(stdout_cfg)
-        .spawn()?;
+        .spawn()
+    {
+        Ok(c) => Some(c),
+        Err(e) => return Err(Box::new(e)),
+    };
 
     if is_last {
-        child.wait()?;
+        cmd.child.as_mut().unwrap().wait()?;
     }
 
-    Ok(Some(child))
+    Ok(cmd.child.as_mut())
 }
 
 #[cfg(test)]
