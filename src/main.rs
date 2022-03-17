@@ -60,6 +60,10 @@ fn main() {
                 eprintln!("{}", e);
             }
         }
+
+        if let Err(e) = wait_cmdline(&mut list) {
+            eprintln!("{}", e);
+        }
     }
 }
 
@@ -136,11 +140,23 @@ fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Child>,
         Err(e) => return Err(Box::new(e)),
     };
 
-    if is_last {
-        cmd.child.as_mut().unwrap().wait()?;
+    Ok(cmd.child.as_mut())
+}
+
+fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
+    let mut list_now = list;
+
+    loop {
+        match list_now {
+            Cons(c, l) => {
+                c.child.as_mut().unwrap().wait()?;
+                list_now = l;
+            },
+            Nil => break,
+        }
     }
 
-    Ok(cmd.child.as_mut())
+    Ok(())
 }
 
 #[cfg(test)]
