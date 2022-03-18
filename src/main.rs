@@ -168,12 +168,14 @@ mod test {
     fn command() {
         let mut list = parse("true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_with_arguments() {
         let mut list = parse("true -l -a --test\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
@@ -186,24 +188,28 @@ mod test {
     fn command_empty() {
         let mut list = parse("\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_pipe_two_commands() {
         let mut list = parse("ls | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_pipe_three_commands() {
         let mut list = parse("ls | ls | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_pipe_nospace() {
         let mut list = parse("ls|true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
@@ -242,17 +248,20 @@ mod test {
     fn command_second_command_does_not_take_stdin() {
         let mut list = parse("ss | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_command_on_the_way_take_stdin() {
         let mut list = parse("ls | wc -l | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_ss_ss() {
         let mut list = parse("ss | ss | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
     }
 }
