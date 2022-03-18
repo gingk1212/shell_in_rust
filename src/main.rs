@@ -59,6 +59,7 @@ fn main() {
             if cfg!(debug_assertions) {
                 eprintln!("{}", e);
             }
+            continue;
         }
 
         if let Err(e) = wait_cmdline(&mut list) {
