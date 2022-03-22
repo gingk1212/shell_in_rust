@@ -8,6 +8,8 @@ struct Cmd {
     command: String,
     args: Vec<String>,
     child: Option<Child>,
+    is_redirect: bool,
+    redirect_path: Option<String>,
 }
 
 impl Cmd {
@@ -16,6 +18,8 @@ impl Cmd {
             command: String::new(),
             args: Vec::new(),
             child: None,
+            is_redirect: false,
+            redirect_path: None,
         }
     }
 }
@@ -74,8 +78,25 @@ fn parse(input: &str) -> Result<List, &str> {
     let cmd_num = cmd_line.len();
 
     for l in cmd_line {
-        let mut l = l.trim().split_whitespace();
         let mut cmd = Cmd::new();
+
+        {
+            let l_redirect: Vec<&str> = l.split(">").collect();
+
+            if l_redirect.len() == 2 {
+                let mut l_redirect = l_redirect[1].trim().split_whitespace();
+                match l_redirect.next() {
+                    Some(s) => cmd.redirect_path = Some(String::from(s)),
+                    None => return Err("Syntax error near unexpected '>'"),
+                }
+                cmd.is_redirect = true;
+            } else if l_redirect.len() > 2 {
+                return Err("Syntax error near unexpected '>'");
+            }
+            // TODO: reomove '>' and path from l
+        }
+
+        let mut l = l.trim().split_whitespace();
 
         match l.next() {
             Some(s) => cmd.command = String::from(s),
@@ -125,7 +146,10 @@ fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Child>,
         stdin_cfg = unsafe { Stdio::from_raw_fd(prev_stdout.into_raw_fd()) };
     }
 
-    if is_last {
+    if cmd.is_redirect {
+        // TODO
+        stdout_cfg = Stdio::piped();
+    } else if is_last {
         stdout_cfg = Stdio::inherit();
     } else {
         stdout_cfg = Stdio::piped();
@@ -263,5 +287,50 @@ mod test {
         let mut list = parse("ss | ss | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_redirect() {
+        let mut list = parse("ls -l > hoge.txt").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_redirect_nospace() {
+        let mut list = parse("ls -l>hoge.txt").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_redirect_front() {
+        let mut list = parse("> hoge.txt ls -l").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_redirect_middle() {
+        let mut list = parse("ls > hoge.txt -l").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_redirect_with_pipe() {
+        let mut list = parse("ls -l > hoge.txt | true").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_multiple_redirect() {
+        assert!(parse("ls -l > hoge.txt > fuga.txt").is_err());
+    }
+
+    #[test]
+    fn command_redirect_nopath() {
+        assert!(parse("ls -l > ").is_err());
     }
 }
