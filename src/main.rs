@@ -77,23 +77,26 @@ fn parse(input: &str) -> Result<List, &str> {
     let cmd_line: Vec<&str> = input.trim().split("|").collect();
     let cmd_num = cmd_line.len();
 
-    for l in cmd_line {
+    for mut l in cmd_line {
         let mut cmd = Cmd::new();
+        let s: String;
 
         {
-            let l_redirect: Vec<&str> = l.split(">").collect();
+            let l_vec: Vec<_> = l.split(">").collect();
 
-            if l_redirect.len() == 2 {
-                let mut l_redirect = l_redirect[1].trim().split_whitespace();
-                match l_redirect.next() {
+            if l_vec.len() == 2 {
+                let mut redirect_path_and_other = l_vec[1].trim().split_whitespace();
+                match redirect_path_and_other.next() {
                     Some(s) => cmd.redirect_path = Some(String::from(s)),
                     None => return Err("Syntax error near unexpected '>'"),
                 }
                 cmd.is_redirect = true;
-            } else if l_redirect.len() > 2 {
+                let other: Vec<_> = redirect_path_and_other.collect();
+                s = l_vec[0].to_string() + " " + &other.join(" ");
+                l = &s;
+            } else if l_vec.len() > 2 {     // Multiple '>' is not supported yet.
                 return Err("Syntax error near unexpected '>'");
             }
-            // TODO: reomove '>' and path from l
         }
 
         let mut l = l.trim().split_whitespace();
