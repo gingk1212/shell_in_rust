@@ -77,29 +77,16 @@ fn parse(input: &str) -> Result<List, &str> {
     let cmd_line: Vec<&str> = input.trim().split("|").collect();
     let cmd_num = cmd_line.len();
 
-    for mut l in cmd_line {
+    for l in cmd_line {
         let mut cmd = Cmd::new();
-        let s: String;
+        let cmd_str: String;
 
-        {
-            let l_vec: Vec<_> = l.split(">").collect();
-
-            if l_vec.len() == 2 {
-                let mut redirect_path_and_other = l_vec[1].trim().split_whitespace();
-                match redirect_path_and_other.next() {
-                    Some(s) => cmd.redirect_path = Some(String::from(s)),
-                    None => return Err("Syntax error near unexpected '>'"),
-                }
-                cmd.is_redirect = true;
-                let other: Vec<_> = redirect_path_and_other.collect();
-                s = l_vec[0].to_string() + " " + &other.join(" ");
-                l = &s;
-            } else if l_vec.len() > 2 {     // Multiple '>' is not supported yet.
-                return Err("Syntax error near unexpected '>'");
-            }
+        match parse_redirect(l, &mut cmd) {
+            Ok(s) => cmd_str = s,
+            Err(e) => return Err(e),
         }
 
-        let mut l = l.trim().split_whitespace();
+        let mut l = cmd_str.trim().split_whitespace();
 
         match l.next() {
             Some(s) => cmd.command = String::from(s),
@@ -120,6 +107,26 @@ fn parse(input: &str) -> Result<List, &str> {
     }
 
     Ok(list)
+}
+
+fn parse_redirect(l: &str, cmd: &mut Cmd) -> Result<String, &'static str> {
+    let l_vec: Vec<_> = l.split(">").collect();
+
+    if l_vec.len() == 2 {
+        let mut redirect_path_and_other = l_vec[1].trim().split_whitespace();
+        match redirect_path_and_other.next() {
+            Some(s) => cmd.redirect_path = Some(String::from(s)),
+            None => return Err("Syntax error near unexpected '>'"),
+        }
+        cmd.is_redirect = true;
+        let other: Vec<_> = redirect_path_and_other.collect();
+        let s = l_vec[0].to_string() + " " + &other.join(" ");
+        Ok(s)
+    } else if l_vec.len() > 2 {     // Multiple '>' is not supported yet.
+        Err("Syntax error near unexpected '>'")
+    } else {
+        Ok(l.to_string())
+    }
 }
 
 fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Child>, Box<dyn Error>> {
