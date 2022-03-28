@@ -284,7 +284,7 @@ mod test {
 
     #[test]
     fn command_second_command_does_not_take_stdin() {
-        let mut list = parse("ss | true\n").unwrap();
+        let mut list = parse("ps -ef | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
@@ -297,8 +297,8 @@ mod test {
     }
 
     #[test]
-    fn command_ss_ss() {
-        let mut list = parse("ss | ss | true\n").unwrap();
+    fn command_pipe_buffer_full() {
+        let mut list = parse("ps -ef | ps -ef | true\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
