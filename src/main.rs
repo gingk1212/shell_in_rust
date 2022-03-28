@@ -304,35 +304,35 @@ mod test {
 
     #[test]
     fn command_redirect() {
-        let mut list = parse("ls -l > hoge.txt").unwrap();
+        let mut list = parse("ls -l > /dev/null").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_redirect_nospace() {
-        let mut list = parse("ls -l>hoge.txt").unwrap();
+        let mut list = parse("ls -l>/dev/null").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_redirect_front() {
-        let mut list = parse("> hoge.txt ls -l").unwrap();
+        let mut list = parse("> /dev/null ls -l").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_redirect_middle() {
-        let mut list = parse("ls > hoge.txt -l").unwrap();
+        let mut list = parse("ls > /dev/null -l").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
 
     #[test]
     fn command_redirect_with_pipe() {
-        let mut list = parse("ls -l > hoge.txt | true").unwrap();
+        let mut list = parse("ls -l > /dev/null | true").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
