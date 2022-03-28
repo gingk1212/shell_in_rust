@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::process::{Command, Stdio, Child};
 use std::error::Error;
 use std::os::unix::io::{IntoRawFd, FromRawFd};
+use std::fs::File;
 
 #[derive(Debug)]
 struct Cmd {
@@ -144,8 +145,8 @@ fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd>, B
     };
 
     if cmd.is_redirect {
-        // TODO
-        stdout_cfg = Stdio::piped();
+        let f = File::create(cmd.redirect_path.as_ref().unwrap())?;
+        stdout_cfg = Stdio::from(f);
     } else if is_last {
         stdout_cfg = Stdio::inherit();
     } else {
