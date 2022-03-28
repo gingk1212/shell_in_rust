@@ -129,32 +129,19 @@ fn parse_redirect(l: &str, cmd: &mut Cmd) -> Result<String, &'static str> {
     }
 }
 
-fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Child>, Box<dyn Error>> {
+fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd>, Box<dyn Error>> {
     let cmd;
-    let mut prev_child = None;
-    let mut is_first = false;
     let is_last = from_outside;
     let stdin_cfg;
     let stdout_cfg;
 
     match list {
         Cons(c, l) => {
-            match invoke_cmd(l, false) {
-                Ok(Some(child)) => prev_child = Some(child),
-                Ok(None) => is_first = true,
-                Err(e) => return Err(e),
-            }
+            stdin_cfg = get_stdin(l)?;
             cmd = c;
         },
         Nil => return Ok(None),
     };
-
-    if is_first {
-        stdin_cfg = Stdio::inherit();
-    } else {
-        let prev_stdout = prev_child.unwrap().stdout.take().unwrap();
-        stdin_cfg = unsafe { Stdio::from_raw_fd(prev_stdout.into_raw_fd()) };
-    }
 
     if cmd.is_redirect {
         // TODO
@@ -175,7 +162,23 @@ fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Child>,
         Err(e) => return Err(Box::new(e)),
     };
 
-    Ok(cmd.child.as_mut())
+    Ok(Some(cmd))
+}
+
+fn get_stdin(l: &mut List) -> Result<Stdio, Box<dyn Error>> {
+    match invoke_cmd(l, false) {
+        Ok(Some(cmd)) => {
+            if cmd.is_redirect {
+                Ok(Stdio::null())
+            } else {
+                let child = cmd.child.as_mut().unwrap();
+                let stdout = child.stdout.take().unwrap();
+                Ok(unsafe { Stdio::from_raw_fd(stdout.into_raw_fd()) })
+            }
+        },
+        Ok(None) => Ok(Stdio::inherit()),
+        Err(e) => return Err(e),
+    }
 }
 
 fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
