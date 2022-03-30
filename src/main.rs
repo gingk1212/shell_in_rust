@@ -80,12 +80,11 @@ fn parse(input: &str) -> Result<List, &str> {
 
     for l in cmd_line {
         let mut cmd = Cmd::new();
-        let cmd_str: String;
 
-        match parse_redirect(l, &mut cmd) {
-            Ok(s) => cmd_str = s,
+        let cmd_str = match parse_redirect(l, &mut cmd) {
+            Ok(s) => s,
             Err(e) => return Err(e),
-        }
+        };
 
         let mut l = cmd_str.trim().split_whitespace();
 
