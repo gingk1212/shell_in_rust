@@ -311,4 +311,25 @@ mod test {
     fn command_redirect_nopath() {
         assert!(parse("ls -l > \n").is_err());
     }
+
+    #[test]
+    fn command_builtin_exit() {
+        let mut list = parse("exit\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_builtin_exit_with_pipe() {
+        let mut list = parse("exit | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_builtin_exit_with_redirect() {
+        let mut list = parse("exit > /dev/null\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
 }
