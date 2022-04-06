@@ -2,6 +2,7 @@ use std::process::{self, Command, Stdio, Child};
 use std::error::Error;
 use std::os::unix::io::{IntoRawFd, FromRawFd};
 use std::fs::File;
+use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid}};
 
 #[derive(Debug)]
 pub struct Cmd {
@@ -11,6 +12,7 @@ pub struct Cmd {
     is_redirect: bool,
     redirect_path: Option<String>,
     builtin: bool,
+    pid: Option<Pid>,
 }
 
 impl Cmd {
@@ -22,6 +24,7 @@ impl Cmd {
             is_redirect: false,
             redirect_path: None,
             builtin: false,
+            pid: None,
         }
     }
 }
@@ -37,6 +40,23 @@ use List::{Cons, Nil};
 impl List {
     fn new() -> List {
         Nil
+    }
+
+    fn get_cmd_num(&self) -> i32 {
+        let mut list_now = self;
+        let mut num = 0;
+
+        loop {
+            match list_now {
+                Cons(_, l) => {
+                    num += 1;
+                    list_now = l;
+                },
+                Nil => break,
+            }
+        }
+
+        num
     }
 }
 
@@ -107,6 +127,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd
     let is_last = from_outside;
     let stdin_cfg;
     let stdout_cfg;
+    let single_command = is_last && list.get_cmd_num() == 1;
 
     match list {
         Cons(c, l) => {
@@ -126,7 +147,15 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd
     }
 
     if cmd.builtin {
-        exec_exit();
+        if single_command {
+            exec_exit();
+        } else {
+            match unsafe{fork()} {
+                Ok(ForkResult::Parent { child }) => cmd.pid = Some(child),
+                Ok(ForkResult::Child) => exec_exit(),
+                Err(e) => return Err(Box::new(e)),
+            }
+        }
     } else {
         cmd.child = match Command::new(&cmd.command)
             .args(&cmd.args)
@@ -170,7 +199,11 @@ pub fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
     loop {
         match list_now {
             Cons(c, l) => {
-                c.child.as_mut().unwrap().wait()?;
+                if let Some(p) = c.pid {
+                    waitpid(p, None)?;
+                } else {
+                    c.child.as_mut().unwrap().wait()?;
+                }
                 list_now = l;
             },
             Nil => break,
@@ -330,7 +363,7 @@ mod test {
         assert!(parse("ls -l > \n").is_err());
     }
 
-    // FIXME: These cause the test to stop on the way.
+    // FIXME: This causes the test to stop on the way.
     // #[test]
     // fn command_builtin_exit() {
     //     let mut list = parse("exit\n").unwrap();
@@ -338,13 +371,14 @@ mod test {
     //     assert!(wait_cmdline(&mut list).is_ok());
     // }
 
-    // #[test]
-    // fn command_builtin_exit_with_pipe() {
-    //     let mut list = parse("exit | true\n").unwrap();
-    //     assert!(invoke_cmd(&mut list, true).is_ok());
-    //     assert!(wait_cmdline(&mut list).is_ok());
-    // }
+    #[test]
+    fn command_builtin_exit_with_pipe() {
+        let mut list = parse("exit | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
 
+    // FIXME: This causes the test to stop on the way.
     // #[test]
     // fn command_builtin_exit_with_redirect() {
     //     let mut list = parse("exit > /dev/null\n").unwrap();
