@@ -1,8 +1,8 @@
 use std::process::{self, Command, Stdio, Child};
 use std::error::Error;
-use std::os::unix::io::{IntoRawFd, FromRawFd};
+use std::os::unix::io::{IntoRawFd, FromRawFd, RawFd};
 use std::fs::File;
-use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid}};
+use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid, pipe, close, dup2}};
 
 #[derive(Debug)]
 pub struct Cmd {
@@ -13,6 +13,7 @@ pub struct Cmd {
     redirect_path: Option<String>,
     builtin: bool,
     pid: Option<Pid>,
+    fd0: RawFd,
 }
 
 impl Cmd {
@@ -25,6 +26,7 @@ impl Cmd {
             redirect_path: None,
             builtin: false,
             pid: None,
+            fd0: -1,
         }
     }
 }
@@ -124,46 +126,88 @@ fn parse_redirect(l: &str, cmd: &mut Cmd) -> Result<String, &'static str> {
 // Called from the last command.
 pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd>, Box<dyn Error>> {
     let cmd;
+    let prev_cmd;
     let is_last = from_outside;
-    let stdin_cfg;
-    let stdout_cfg;
     let single_command = is_last && list.get_cmd_num() == 1;
+    let mut prev_fd0 = -1;
 
     match list {
         Cons(c, l) => {
-            stdin_cfg = get_stdin(l)?;
+            prev_cmd = invoke_cmd(l, false)?;
+            if let Some(_) = prev_cmd {
+                prev_fd0 = prev_cmd.as_ref().unwrap().fd0;
+            }
             cmd = c;
         },
         Nil => return Ok(None),
-    };
-
-    if cmd.is_redirect {
-        let f = File::create(cmd.redirect_path.as_ref().unwrap())?;
-        stdout_cfg = Stdio::from(f);
-    } else if is_last {
-        stdout_cfg = Stdio::inherit();
-    } else {
-        stdout_cfg = Stdio::piped();
     }
 
     if cmd.builtin {
         if single_command {
             exec_exit();
         } else {
+            let (fd0, fd1) = pipe()?;
+
             match unsafe{fork()} {
-                Ok(ForkResult::Parent { child }) => cmd.pid = Some(child),
-                Ok(ForkResult::Child) => exec_exit(),
+                Ok(ForkResult::Parent { child }) => {
+                    cmd.pid = Some(child);
+                    close(fd1)?;
+
+                    if let Some(_) = prev_cmd {
+                        close(prev_fd0)?;
+                    }
+
+                    if is_last {
+                        close(fd0)?;
+                    } else {
+                        cmd.fd0 = fd0;
+                    }
+                },
+                Ok(ForkResult::Child) => {
+                    // unnecesssary
+                    close(fd0)?;
+
+                    // stdin
+                    if let Some(_) = prev_cmd {
+                        close(0)?;
+                        dup2(prev_fd0, 0)?;
+                        close(prev_fd0)?;
+                    }
+
+                    // stdout
+                    if is_last {
+                        close(fd1)?;
+                    } else {
+                        close(1)?;
+                        dup2(fd1, 1)?;
+                        close(fd1)?;
+                    }
+
+                    exec_exit();
+                },
                 Err(e) => return Err(Box::new(e)),
             }
         }
     } else {
-        cmd.child = match Command::new(&cmd.command)
+        let stdin_cfg = get_stdin(prev_cmd)?;
+        let stdout_cfg = get_stdout(cmd, is_last)?;
+
+        match Command::new(&cmd.command)
             .args(&cmd.args)
             .stdin(stdin_cfg)
             .stdout(stdout_cfg)
             .spawn()
         {
-            Ok(c) => Some(c),
+            Ok(mut c) => {
+                if cmd.is_redirect {
+                    let f = File::create("/dev/null")?;
+                    cmd.fd0 = f.into_raw_fd();
+                } else if !is_last {
+                    let stdout = c.stdout.take().unwrap();
+                    cmd.fd0 = stdout.into_raw_fd();
+                }
+                cmd.child = Some(c);
+            }
             Err(e) => return Err(Box::new(e)),
         };
     }
@@ -171,21 +215,27 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd
     Ok(Some(cmd))
 }
 
-fn get_stdin(l: &mut List) -> Result<Stdio, Box<dyn Error>> {
-    match invoke_cmd(l, false) {
-        Ok(Some(cmd)) => {
-            if cmd.is_redirect {
-                Ok(Stdio::null())
-            } else if cmd.builtin {
+fn get_stdin(prev_cmd: Option<&mut Cmd>) -> Result<Stdio, Box<dyn Error>> {
+    match prev_cmd {
+        Some(c) => {
+            if c.is_redirect {
                 Ok(Stdio::null())
             } else {
-                let child = cmd.child.as_mut().unwrap();
-                let stdout = child.stdout.take().unwrap();
-                Ok(unsafe { Stdio::from_raw_fd(stdout.into_raw_fd()) })
+                Ok(unsafe { Stdio::from_raw_fd(c.fd0) })
             }
         },
-        Ok(None) => Ok(Stdio::inherit()),
-        Err(e) => return Err(e),
+        None => Ok(Stdio::inherit())
+    }
+}
+
+fn get_stdout(cmd: &mut Cmd, is_last: bool) -> Result<Stdio, Box<dyn Error>> {
+    if cmd.is_redirect {
+        let f = File::create(cmd.redirect_path.as_ref().unwrap())?;
+        Ok(Stdio::from(f))
+    } else if is_last {
+        Ok(Stdio::inherit())
+    } else {
+        Ok(Stdio::piped())
     }
 }
 
@@ -374,6 +424,27 @@ mod test {
     #[test]
     fn command_builtin_exit_with_pipe() {
         let mut list = parse("exit | true\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_builtin_exit_with_pipe2() {
+        let mut list = parse("true | exit\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_builtin_exit_with_pipe_and_redirect() {
+        let mut list = parse("exit | ls -l > /dev/null\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
+
+    #[test]
+    fn command_builtin_exit_with_pipe_and_redirect2() {
+        let mut list = parse("ls -l > /dev/null | exit\n").unwrap();
         assert!(invoke_cmd(&mut list, true).is_ok());
         assert!(wait_cmdline(&mut list).is_ok());
     }
