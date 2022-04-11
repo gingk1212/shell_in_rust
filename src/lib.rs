@@ -2,6 +2,7 @@ use std::process::{self, Command, Stdio, Child};
 use std::error::Error;
 use std::os::unix::io::{IntoRawFd, FromRawFd, RawFd};
 use std::fs::File;
+use std::env;
 use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid, pipe, close, dup2}};
 
 #[derive(Debug)]
@@ -79,7 +80,7 @@ pub fn parse(input: &str) -> Result<List, &str> {
 
         match l.next() {
             Some(s) => {
-                if s == "exit" {
+                if s == "exit" || s == "pwd" {
                     cmd.builtin = true;
                 }
                 cmd.command = String::from(s);
@@ -140,7 +141,11 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
 
     if cmd.builtin {
         if single_command {
-            exec_exit();
+            if cmd.command == "exit" {
+                exec_exit();
+            } else if cmd.command == "pwd" {
+                exec_pwd(cmd.args.len() as i32, &cmd.args);
+            }
         } else {
             fork_exec(cmd, prev_cmd, is_last)?;
         }
@@ -238,7 +243,13 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
                 close(fd1)?;
             }
 
-            exec_exit();
+            if cmd.command == "exit" {
+                exec_exit();
+            } else if cmd.command == "pwd" {
+                exec_pwd(cmd.args.len() as i32, &cmd.args);
+            }
+
+            process::exit(0);
         },
         Err(e) => return Err(Box::new(e)),
     }
@@ -250,6 +261,17 @@ fn exec_exit() {
     process::exit(0);
 }
 
+fn exec_pwd(argc: i32, _args: &[String]) {
+    if argc != 0 {
+        eprintln!("pwd: wrong argument");
+    } else {
+        match env::current_dir() {
+            Ok(s) => println!("{}", s.display()),
+            Err(_) => eprintln!("pwd: cannot get working directory"),
+        }
+    }
+}
+
 pub fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
     let mut list_now = list;
 
@@ -258,7 +280,7 @@ pub fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
             Cons(c, l) => {
                 if let Some(p) = c.pid {
                     waitpid(p, None)?;
-                } else {
+                } else if let Some(_) = c.child {
                     c.child.as_mut().unwrap().wait()?;
                 }
                 list_now = l;
@@ -456,11 +478,10 @@ mod test {
         assert!(wait_cmdline(&mut list).is_ok());
     }
 
-    // FIXME: This causes the test to stop on the way.
-    // #[test]
-    // fn command_builtin_exit_with_redirect() {
-    //     let mut list = parse("exit > /dev/null\n").unwrap();
-    //     assert!(invoke_cmd(&mut list, true).is_ok());
-    //     assert!(wait_cmdline(&mut list).is_ok());
-    // }
+    #[test]
+    fn command_builtin_pwd_with_redirect() {
+        let mut list = parse("pwd > /dev/null\n").unwrap();
+        assert!(invoke_cmd(&mut list, true).is_ok());
+        assert!(wait_cmdline(&mut list).is_ok());
+    }
 }
