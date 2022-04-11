@@ -124,19 +124,15 @@ fn parse_redirect(l: &str, cmd: &mut Cmd) -> Result<String, &'static str> {
 }
 
 // Called from the last command.
-pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd>, Box<dyn Error>> {
+pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, Box<dyn Error>> {
     let cmd;
     let prev_cmd;
     let is_last = from_outside;
     let single_command = is_last && list.get_cmd_num() == 1;
-    let mut prev_fd0 = -1;
 
     match list {
         Cons(c, l) => {
             prev_cmd = invoke_cmd(l, false)?;
-            if let Some(_) = prev_cmd {
-                prev_fd0 = prev_cmd.as_ref().unwrap().fd0;
-            }
             cmd = c;
         },
         Nil => return Ok(None),
@@ -146,47 +142,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd
         if single_command {
             exec_exit();
         } else {
-            let (fd0, fd1) = pipe()?;
-
-            match unsafe{fork()} {
-                Ok(ForkResult::Parent { child }) => {
-                    cmd.pid = Some(child);
-                    close(fd1)?;
-
-                    if let Some(_) = prev_cmd {
-                        close(prev_fd0)?;
-                    }
-
-                    if is_last {
-                        close(fd0)?;
-                    } else {
-                        cmd.fd0 = fd0;
-                    }
-                },
-                Ok(ForkResult::Child) => {
-                    // unnecesssary
-                    close(fd0)?;
-
-                    // stdin
-                    if let Some(_) = prev_cmd {
-                        close(0)?;
-                        dup2(prev_fd0, 0)?;
-                        close(prev_fd0)?;
-                    }
-
-                    // stdout
-                    if is_last {
-                        close(fd1)?;
-                    } else {
-                        close(1)?;
-                        dup2(fd1, 1)?;
-                        close(fd1)?;
-                    }
-
-                    exec_exit();
-                },
-                Err(e) => return Err(Box::new(e)),
-            }
+            fork_exec(cmd, prev_cmd, is_last)?;
         }
     } else {
         let stdin_cfg = get_stdin(prev_cmd)?;
@@ -215,7 +171,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&mut Cmd
     Ok(Some(cmd))
 }
 
-fn get_stdin(prev_cmd: Option<&mut Cmd>) -> Result<Stdio, Box<dyn Error>> {
+fn get_stdin(prev_cmd: Option<&Cmd>) -> Result<Stdio, Box<dyn Error>> {
     match prev_cmd {
         Some(c) => {
             if c.is_redirect {
@@ -237,6 +193,57 @@ fn get_stdout(cmd: &mut Cmd, is_last: bool) -> Result<Stdio, Box<dyn Error>> {
     } else {
         Ok(Stdio::piped())
     }
+}
+
+fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(), Box<dyn Error>> {
+    let (fd0, fd1) = pipe()?;
+    let mut prev_fd0 = None;
+
+    if let Some(_) = prev_cmd {
+        prev_fd0 = Some(prev_cmd.unwrap().fd0);
+    }
+
+    match unsafe{fork()} {
+        Ok(ForkResult::Parent { child }) => {
+            cmd.pid = Some(child);
+            close(fd1)?;
+
+            if let Some(f) = prev_fd0 {
+                close(f)?;
+            }
+
+            if is_last {
+                close(fd0)?;
+            } else {
+                cmd.fd0 = fd0;
+            }
+        },
+        Ok(ForkResult::Child) => {
+            // unnecesssary
+            close(fd0)?;
+
+            // stdin
+            if let Some(f) = prev_fd0 {
+                close(0)?;
+                dup2(f, 0)?;
+                close(f)?;
+            }
+
+            // stdout
+            if is_last {
+                close(fd1)?;
+            } else {
+                close(1)?;
+                dup2(fd1, 1)?;
+                close(fd1)?;
+            }
+
+            exec_exit();
+        },
+        Err(e) => return Err(Box::new(e)),
+    }
+
+    Ok(())
 }
 
 fn exec_exit() {
