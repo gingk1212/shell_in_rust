@@ -3,6 +3,7 @@ use std::error::Error;
 use std::os::unix::io::{IntoRawFd, FromRawFd, RawFd};
 use std::fs::File;
 use std::env;
+use std::io::Write;
 use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid, pipe, close, dup2}};
 
 #[derive(Debug)]
@@ -144,7 +145,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
             if cmd.command == "exit" {
                 exec_exit();
             } else if cmd.command == "pwd" {
-                exec_pwd(cmd.args.len() as i32, &cmd.args);
+                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.is_redirect, &cmd.redirect_path)?;
             }
         } else {
             fork_exec(cmd, prev_cmd, is_last)?;
@@ -235,7 +236,17 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             }
 
             // stdout
-            if is_last {
+            if cmd.is_redirect {
+                let f = File::create(cmd.redirect_path.as_ref().unwrap())?;
+                let fd = f.into_raw_fd();
+                close(1)?;
+                dup2(fd, 1)?;
+                close(fd)?;
+
+                // unnecessary
+                close(fd1)?;
+            } else if is_last {
+                // unnecessary
                 close(fd1)?;
             } else {
                 close(1)?;
@@ -246,7 +257,7 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             if cmd.command == "exit" {
                 exec_exit();
             } else if cmd.command == "pwd" {
-                exec_pwd(cmd.args.len() as i32, &cmd.args);
+                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.is_redirect, &cmd.redirect_path)?;
             }
 
             process::exit(0);
@@ -261,15 +272,25 @@ fn exec_exit() {
     process::exit(0);
 }
 
-fn exec_pwd(argc: i32, _args: &[String]) {
+fn exec_pwd(argc: i32, _args: &[String], is_redirect: bool, redirect_path: &Option<String>) -> Result<(), Box<dyn Error>> {
     if argc != 0 {
         eprintln!("pwd: wrong argument");
     } else {
         match env::current_dir() {
-            Ok(s) => println!("{}", s.display()),
+            Ok(s) => {
+                if is_redirect {
+                    let mut f = File::create(redirect_path.as_ref().unwrap())?;
+                    f.write_all(s.to_str().unwrap().as_bytes())?;
+                    f.write_all("\n".as_bytes())?;
+                } else {
+                    println!("{}", s.display());
+                }
+            }
             Err(_) => eprintln!("pwd: cannot get working directory"),
         }
     }
+
+    Ok(())
 }
 
 pub fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
