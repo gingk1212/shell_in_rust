@@ -143,7 +143,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
     if cmd.builtin {
         if single_command {
             if cmd.command == "exit" {
-                exec_exit();
+                exec_exit(cmd.args.len() as i32);
             } else if cmd.command == "pwd" {
                 exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
             }
@@ -255,7 +255,7 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             }
 
             if cmd.command == "exit" {
-                exec_exit();
+                exec_exit(cmd.args.len() as i32);
             } else if cmd.command == "pwd" {
                 exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
             }
@@ -268,8 +268,12 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
     Ok(())
 }
 
-fn exec_exit() {
-    process::exit(0);
+fn exec_exit(argc: i32) {
+    if argc != 0 {
+        eprintln!("exit: wrong argument");
+    } else {
+        process::exit(0);
+    }
 }
 
 fn exec_pwd(argc: i32, _args: &[String], redirect: bool, redirect_path: &Option<String>) -> Result<(), Box<dyn Error>> {
