@@ -11,7 +11,7 @@ pub struct Cmd {
     command: String,
     args: Vec<String>,
     child: Option<Child>,
-    is_redirect: bool,
+    redirect: bool,
     redirect_path: Option<String>,
     builtin: bool,
     pid: Option<Pid>,
@@ -24,7 +24,7 @@ impl Cmd {
             command: String::new(),
             args: Vec::new(),
             child: None,
-            is_redirect: false,
+            redirect: false,
             redirect_path: None,
             builtin: false,
             pid: None,
@@ -114,7 +114,7 @@ fn parse_redirect(l: &str, cmd: &mut Cmd) -> Result<String, &'static str> {
             Some(s) => cmd.redirect_path = Some(String::from(s)),
             None => return Err("Syntax error near unexpected '>'"),
         }
-        cmd.is_redirect = true;
+        cmd.redirect = true;
         let other: Vec<_> = redirect_path_and_other.collect();
         let s = l_vec[0].to_string() + " " + &other.join(" ");
         Ok(s)
@@ -145,7 +145,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
             if cmd.command == "exit" {
                 exec_exit();
             } else if cmd.command == "pwd" {
-                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.is_redirect, &cmd.redirect_path)?;
+                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
             }
         } else {
             fork_exec(cmd, prev_cmd, is_last)?;
@@ -161,7 +161,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
             .spawn()
         {
             Ok(mut c) => {
-                if cmd.is_redirect {
+                if cmd.redirect {
                     let f = File::create("/dev/null")?;
                     cmd.fd0 = f.into_raw_fd();
                 } else if !is_last {
@@ -180,7 +180,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
 fn get_stdin(prev_cmd: Option<&Cmd>) -> Result<Stdio, Box<dyn Error>> {
     match prev_cmd {
         Some(c) => {
-            if c.is_redirect {
+            if c.redirect {
                 Ok(Stdio::null())
             } else {
                 Ok(unsafe { Stdio::from_raw_fd(c.fd0) })
@@ -191,7 +191,7 @@ fn get_stdin(prev_cmd: Option<&Cmd>) -> Result<Stdio, Box<dyn Error>> {
 }
 
 fn get_stdout(cmd: &mut Cmd, is_last: bool) -> Result<Stdio, Box<dyn Error>> {
-    if cmd.is_redirect {
+    if cmd.redirect {
         let f = File::create(cmd.redirect_path.as_ref().unwrap())?;
         Ok(Stdio::from(f))
     } else if is_last {
@@ -205,8 +205,8 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
     let (fd0, fd1) = pipe()?;
     let mut prev_fd0 = None;
 
-    if let Some(_) = prev_cmd {
-        prev_fd0 = Some(prev_cmd.unwrap().fd0);
+    if let Some(p) = prev_cmd {
+        prev_fd0 = Some(p.fd0);
     }
 
     match unsafe{fork()} {
@@ -236,7 +236,7 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             }
 
             // stdout
-            if cmd.is_redirect {
+            if cmd.redirect {
                 let f = File::create(cmd.redirect_path.as_ref().unwrap())?;
                 let fd = f.into_raw_fd();
                 close(1)?;
@@ -257,7 +257,7 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             if cmd.command == "exit" {
                 exec_exit();
             } else if cmd.command == "pwd" {
-                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.is_redirect, &cmd.redirect_path)?;
+                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
             }
 
             process::exit(0);
@@ -272,13 +272,13 @@ fn exec_exit() {
     process::exit(0);
 }
 
-fn exec_pwd(argc: i32, _args: &[String], is_redirect: bool, redirect_path: &Option<String>) -> Result<(), Box<dyn Error>> {
+fn exec_pwd(argc: i32, _args: &[String], redirect: bool, redirect_path: &Option<String>) -> Result<(), Box<dyn Error>> {
     if argc != 0 {
         eprintln!("pwd: wrong argument");
     } else {
         match env::current_dir() {
             Ok(s) => {
-                if is_redirect {
+                if redirect {
                     let mut f = File::create(redirect_path.as_ref().unwrap())?;
                     f.write_all(s.to_str().unwrap().as_bytes())?;
                     f.write_all("\n".as_bytes())?;
