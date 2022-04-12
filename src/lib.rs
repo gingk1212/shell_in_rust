@@ -4,6 +4,7 @@ use std::os::unix::io::{IntoRawFd, FromRawFd, RawFd};
 use std::fs::File;
 use std::env;
 use std::io::Write;
+use std::path::Path;
 use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid, pipe, close, dup2}};
 
 #[derive(Debug)]
@@ -81,7 +82,7 @@ pub fn parse(input: &str) -> Result<List, &str> {
 
         match l.next() {
             Some(s) => {
-                if s == "exit" || s == "pwd" {
+                if s == "exit" || s == "pwd" || s == "cd" {
                     cmd.builtin = true;
                 }
                 cmd.command = String::from(s);
@@ -146,6 +147,8 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
                 exec_exit(cmd.args.len() as i32);
             } else if cmd.command == "pwd" {
                 exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
+            } else if cmd.command == "cd" {
+                exec_cd(cmd.args.len() as i32, &cmd.args)?;
             }
         } else {
             fork_exec(cmd, prev_cmd, is_last)?;
@@ -258,6 +261,8 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
                 exec_exit(cmd.args.len() as i32);
             } else if cmd.command == "pwd" {
                 exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
+            } else if cmd.command == "cd" {
+                exec_cd(cmd.args.len() as i32, &cmd.args)?;
             }
 
             process::exit(0);
@@ -292,6 +297,17 @@ fn exec_pwd(argc: i32, _args: &[String], redirect: bool, redirect_path: &Option<
             }
             Err(_) => eprintln!("pwd: cannot get working directory"),
         }
+    }
+
+    Ok(())
+}
+
+fn exec_cd(argc: i32, args: &[String]) -> Result<(), Box<dyn Error>> {
+    if argc != 1 {
+        eprintln!("cd: wrong argument");
+    } else {
+        let dir = Path::new(&args[0]);
+        env::set_current_dir(&dir)?;
     }
 
     Ok(())
