@@ -1,11 +1,14 @@
-use std::process::{self, Command, Stdio, Child};
-use std::error::Error;
-use std::os::unix::io::{IntoRawFd, FromRawFd, RawFd};
-use std::fs::File;
+use nix::{
+    sys::wait::waitpid,
+    unistd::{close, dup2, fork, pipe, ForkResult, Pid},
+};
 use std::env;
+use std::error::Error;
+use std::fs::File;
 use std::io::Write;
+use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
-use nix::{sys::wait::waitpid, unistd::{fork, ForkResult, Pid, pipe, close, dup2}};
+use std::process::{self, Child, Command, Stdio};
 
 #[derive(Debug)]
 pub struct Cmd {
@@ -56,7 +59,7 @@ impl List {
                 Cons(_, l) => {
                     num += 1;
                     list_now = l;
-                },
+                }
                 Nil => break,
             }
         }
@@ -86,14 +89,15 @@ pub fn parse(input: &str) -> Result<List, &str> {
                     cmd.builtin = true;
                 }
                 cmd.command = String::from(s);
-            },
-            None => {   // empty or whitespace command
+            }
+            None => {
+                // empty or whitespace command
                 if cmd_num > 1 {
                     return Err("Syntax error near unexpected '|'");
                 } else {
                     break;
                 }
-            },
+            }
         }
 
         for arg in l {
@@ -119,7 +123,8 @@ fn parse_redirect(l: &str, cmd: &mut Cmd) -> Result<String, &'static str> {
         let other: Vec<_> = redirect_path_and_other.collect();
         let s = l_vec[0].to_string() + " " + &other.join(" ");
         Ok(s)
-    } else if l_vec.len() > 2 {     // Multiple '>' is not supported yet.
+    } else if l_vec.len() > 2 {
+        // Multiple '>' is not supported yet.
         Err("Syntax error near unexpected '>'")
     } else {
         Ok(l.to_string())
@@ -137,7 +142,7 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
         Cons(c, l) => {
             prev_cmd = invoke_cmd(l, false)?;
             cmd = c;
-        },
+        }
         Nil => return Ok(None),
     }
 
@@ -146,7 +151,12 @@ pub fn invoke_cmd(list: &mut List, from_outside: bool) -> Result<Option<&Cmd>, B
             if cmd.command == "exit" {
                 exec_exit(cmd.args.len() as i32);
             } else if cmd.command == "pwd" {
-                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
+                exec_pwd(
+                    cmd.args.len() as i32,
+                    &cmd.args,
+                    cmd.redirect,
+                    &cmd.redirect_path,
+                )?;
             } else if cmd.command == "cd" {
                 exec_cd(cmd.args.len() as i32, &cmd.args)?;
             }
@@ -188,8 +198,8 @@ fn get_stdin(prev_cmd: Option<&Cmd>) -> Result<Stdio, Box<dyn Error>> {
             } else {
                 Ok(unsafe { Stdio::from_raw_fd(c.fd0) })
             }
-        },
-        None => Ok(Stdio::inherit())
+        }
+        None => Ok(Stdio::inherit()),
     }
 }
 
@@ -212,7 +222,7 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
         prev_fd0 = Some(p.fd0);
     }
 
-    match unsafe{fork()} {
+    match unsafe { fork() } {
         Ok(ForkResult::Parent { child }) => {
             cmd.pid = Some(child);
             close(fd1)?;
@@ -226,7 +236,7 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             } else {
                 cmd.fd0 = fd0;
             }
-        },
+        }
         Ok(ForkResult::Child) => {
             // unnecesssary
             close(fd0)?;
@@ -260,13 +270,18 @@ fn fork_exec(cmd: &mut Cmd, prev_cmd: Option<&Cmd>, is_last: bool) -> Result<(),
             if cmd.command == "exit" {
                 exec_exit(cmd.args.len() as i32);
             } else if cmd.command == "pwd" {
-                exec_pwd(cmd.args.len() as i32, &cmd.args, cmd.redirect, &cmd.redirect_path)?;
+                exec_pwd(
+                    cmd.args.len() as i32,
+                    &cmd.args,
+                    cmd.redirect,
+                    &cmd.redirect_path,
+                )?;
             } else if cmd.command == "cd" {
                 exec_cd(cmd.args.len() as i32, &cmd.args)?;
             }
 
             process::exit(0);
-        },
+        }
         Err(e) => return Err(Box::new(e)),
     }
 
@@ -281,7 +296,12 @@ fn exec_exit(argc: i32) {
     }
 }
 
-fn exec_pwd(argc: i32, _args: &[String], redirect: bool, redirect_path: &Option<String>) -> Result<(), Box<dyn Error>> {
+fn exec_pwd(
+    argc: i32,
+    _args: &[String],
+    redirect: bool,
+    redirect_path: &Option<String>,
+) -> Result<(), Box<dyn Error>> {
     if argc != 0 {
         eprintln!("pwd: wrong argument");
     } else {
@@ -325,7 +345,7 @@ pub fn wait_cmdline(list: &mut List) -> Result<(), Box<dyn Error>> {
                     c.child.as_mut().unwrap().wait()?;
                 }
                 list_now = l;
-            },
+            }
             Nil => break,
         }
     }

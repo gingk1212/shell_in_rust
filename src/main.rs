@@ -17,7 +17,7 @@ fn main() {
             Err(s) => {
                 eprintln!("{}", s);
                 continue;
-            },
+            }
         };
 
         if let Err(e) = shell_in_rust::invoke_cmd(&mut list, true) {
